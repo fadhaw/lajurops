@@ -8,6 +8,7 @@ import type { Task } from '../lib/types'
 import { Popover } from './Popover'
 import { FilterTrigger, SearchSelect, type SearchOption } from './SearchSelect'
 import { taskColor } from './ui'
+import { isClosed } from '../lib/types'
 
 // --- project filter ---------------------------------------------------------
 
@@ -79,7 +80,7 @@ export function inDateRange(t: Pick<Task, 'start_at' | 'end_at' | 'status'>, r: 
   if (!r) return true
   const start = t.start_at ? new Date(t.start_at) : null
   const end = t.end_at ? new Date(t.end_at) : null
-  if (!start && !end) return t.status !== 'done'
+  if (!start && !end) return !isClosed(t.status)
   const from = startOfDay(r.from)
   const until = addDays(startOfDay(r.to), 1)
   const s = start ?? end!

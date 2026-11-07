@@ -164,7 +164,8 @@ func checkCategory(ctx context.Context, tx pgx.Tx, taskType, workspaceID, catego
 // daily/hourly tasks inside it (children and grandchildren), and its status
 // while it is open: any started -> in_progress, otherwise todo. Done is
 // only ever set by hand (finishing every task doesn't close the project),
-// and a done project stays done until it is reopened.
+// and a done project stays done until it is reopened. Canceled tasks
+// don't count.
 const recomputeProjectsSQL = `
 	WITH p AS (SELECT id FROM tasks WHERE type = 'project' AND id::text = ANY($1)),
 	d AS (
@@ -174,7 +175,7 @@ const recomputeProjectsSQL = `
 	),
 	s AS (
 		SELECT p.id AS pid,
-		       count(d.status) AS total,
+		       count(d.status) FILTER (WHERE d.status <> 'canceled') AS total,
 		       count(*) FILTER (WHERE d.status = 'done') AS done,
 		       count(*) FILTER (WHERE d.status IN ('in_progress', 'in_review', 'done')) AS started
 		FROM p LEFT JOIN d ON d.pid = p.id GROUP BY p.id

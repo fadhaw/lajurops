@@ -312,7 +312,7 @@ func (s *Store) Search(ctx context.Context, sq SearchQuery) (SearchResults, erro
 	}
 	switch p.is {
 	case "open":
-		conds = append(conds, "t.status <> 'done'")
+		conds = append(conds, "t.status NOT IN ('done', 'canceled')")
 	case "done":
 		conds = append(conds, "t.status = 'done'")
 	}
@@ -335,7 +335,7 @@ func (s *Store) Search(ctx context.Context, sq SearchQuery) (SearchResults, erro
 		where = " WHERE " + strings.Join(conds, " AND ")
 	}
 	score := fmt.Sprintf(`(CASE WHEN %s THEN 1000 ELSE 0 END + CASE WHEN %s THEN 20 ELSE 10 END + (%s) * 5
-		+ CASE WHEN t.status <> 'done' THEN 5 ELSE 0 END)`, keyMatch, allLiteral, similarity)
+		+ CASE WHEN t.status NOT IN ('done', 'canceled') THEN 5 ELSE 0 END)`, keyMatch, allLiteral, similarity)
 	q := `SELECT ` + searchCols + searchFrom + where +
 		` ORDER BY ` + score + ` DESC, abs(extract(epoch FROM coalesce(t.start_at, t.created_at) - ` + arg(sq.Now) + `)), t.number DESC LIMIT ` + strconv.Itoa(sq.Limit+1)
 	// pg_trgm's default word-similarity cut-off (0.6) misses one-letter

@@ -108,7 +108,7 @@ type TaskFilter struct {
 var (
 	taskTypes     = set("project", "daily", "hourly")
 	projectKinds  = set("long", "short")
-	taskStatuses  = set("todo", "in_progress", "in_review", "done")
+	taskStatuses  = set("todo", "in_progress", "in_review", "rescheduled", "done", "canceled")
 	taskPriorites = set("low", "medium", "high", "urgent")
 )
 
@@ -118,12 +118,12 @@ const taskCols = `t.id::text, t.workspace_id::text, p.key, t.parent_id::text, t.
 	t.reporter_id::text, t.start_at, t.end_at,
 	t.estimate_hours::float8, t.actual_hours::float8, t.progress, t.position,
 	t.completed_at, t.created_at, t.updated_at,
-	(SELECT count(*) FROM tasks s WHERE s.parent_id = t.id),
+	(SELECT count(*) FROM tasks s WHERE s.parent_id = t.id AND s.status <> 'canceled'),
 	(SELECT count(*) FROM tasks s WHERE s.parent_id = t.id AND s.status = 'done'),
 	(SELECT count(*) FROM task_comments c WHERE c.task_id = t.id),
 	(SELECT coalesce(array_agg(d.depends_on_id::text), '{}') FROM task_dependencies d WHERE d.task_id = t.id),
 	(SELECT count(*) FROM task_dependencies d JOIN tasks b ON b.id = d.depends_on_id
-	  WHERE d.task_id = t.id AND b.status <> 'done'),
+	  WHERE d.task_id = t.id AND b.status NOT IN ('done', 'canceled')),
 	t.environment_id::text, e.name, e.color,
 	t.project_category_id::text, pc.name, pc.color,
 	t.runbook_total, t.runbook_done` // kept current by triggers (migration 015)
@@ -197,7 +197,7 @@ func (s *Store) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 		case "all":
 			cond = "((" + cond + ") OR (t.start_at IS NULL AND t.end_at IS NULL))"
 		case "open":
-			cond = "((" + cond + ") OR (t.start_at IS NULL AND t.end_at IS NULL AND t.status <> 'done'))"
+			cond = "((" + cond + ") OR (t.start_at IS NULL AND t.end_at IS NULL AND t.status NOT IN ('done', 'canceled')))"
 		}
 		where = append(where, cond)
 	}
@@ -213,7 +213,7 @@ func (s *Store) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 		n := len(args)
 		where = append(where, fmt.Sprintf("(t.title ILIKE $%d OR t.number = $%d)", n-2, n-1))
 		// Exact number, then titles starting with the query, open before done, newest first.
-		order = fmt.Sprintf(" ORDER BY t.number = $%d DESC, t.title ILIKE $%d DESC, t.status = 'done', t.number DESC", n-1, n)
+		order = fmt.Sprintf(" ORDER BY t.number = $%d DESC, t.title ILIKE $%d DESC, t.status IN ('done', 'canceled'), t.number DESC", n-1, n)
 	}
 
 	cond := ""
@@ -265,7 +265,7 @@ type ProjectProgress struct {
 // ProjectProgressFor counts the work inside every project of a workspace.
 func (s *Store) ProjectProgressFor(ctx context.Context, workspaceID string) ([]ProjectProgress, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT p.id::text, count(x.id) FILTER (WHERE x.status = 'done'), count(x.id)
+		SELECT p.id::text, count(x.id) FILTER (WHERE x.status = 'done'), count(x.id) FILTER (WHERE x.status <> 'canceled')
 		FROM tasks p
 		LEFT JOIN LATERAL (
 			SELECT c.id, c.status FROM tasks c WHERE c.parent_id = p.id
@@ -725,6 +725,9 @@ func mapConstraintErr(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23514": // check_violation
+			if pgErr.ConstraintName == "tasks_project_status" {
+				return invalid("projects can't be rescheduled or canceled; their status comes from their tasks")
+			}
 			if pgErr.ConstraintName == "tasks_category_only_projects" {
 				return invalid("only projects have a category")
 			}

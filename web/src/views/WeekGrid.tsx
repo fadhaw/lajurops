@@ -5,7 +5,7 @@ import { useTaskModal } from '../components/TaskModal'
 import { UserX } from 'lucide-react'
 import { Avatar, userName } from '../components/ui'
 import { useTasks, useUsers } from '../lib/queries'
-import { statusLabel, type Status, type Task, type Workload } from '../lib/types'
+import { statusLabel, type Status, type Task, type Workload, isClosed } from '../lib/types'
 
 const fmtH = (h: number) => (Math.round(h * 10) / 10).toLocaleString() + 'h'
 
@@ -13,7 +13,9 @@ const STATUS_BORDER: Record<Status, string> = {
   todo: 'border-l-slate-400',
   in_progress: 'border-l-blue-500',
   in_review: 'border-l-amber-500',
+  rescheduled: 'border-l-orange-500',
   done: 'border-l-emerald-500',
+  canceled: 'border-l-rose-400',
 }
 
 type Span = { start: number; end: number }
@@ -152,7 +154,7 @@ export default function WeekGrid({ from, rows, workspaceId }: { from: Date; rows
                           {t.end_at && `–${format(new Date(t.end_at), 'HH:mm')}`}
                           <span className="ml-1 text-slate-400">{t.key}</span>
                         </div>
-                        <div className={clsx('line-clamp-2 text-xs leading-snug', t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</div>
+                        <div className={clsx('line-clamp-2 text-xs leading-snug', isClosed(t.status) ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</div>
                       </button>
                     ))}
                     {list.length > 0 && (

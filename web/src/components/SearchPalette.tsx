@@ -6,7 +6,7 @@ import { dotStyle } from '../lib/colors'
 import { formatSchedule } from '../lib/dates'
 import { useSearch, useSearchByIds } from '../lib/queries'
 import { recentTaskIds } from '../lib/recent'
-import { statusLabel, type SearchResult, type SearchResults, type TaskType } from '../lib/types'
+import { statusLabel, type SearchResult, type SearchResults, type TaskType, isClosed } from '../lib/types'
 import { useTaskModal } from './TaskModal'
 import { TypeBadge } from './ui'
 
@@ -46,7 +46,7 @@ const FILTER_STYLE = {
   due: { icon: CalendarRange, cls: 'bg-violet-50 text-violet-700' },
 } as const
 const FILTER_PREFIX = { owner: '@', env: '#', is: 'is: ', type: 'type: ', in: 'in: ', due: '' } as const
-const STATUS_CLS = { todo: 'bg-slate-100 text-slate-600', in_progress: 'bg-blue-50 text-blue-700', in_review: 'bg-amber-50 text-amber-800', done: 'bg-emerald-50 text-emerald-700' }
+const STATUS_CLS = { todo: 'bg-slate-100 text-slate-600', in_progress: 'bg-blue-50 text-blue-700', in_review: 'bg-amber-50 text-amber-800', rescheduled: 'bg-orange-50 text-orange-700', done: 'bg-emerald-50 text-emerald-700', canceled: 'bg-rose-50 text-rose-700' }
 
 /** What each filter does, with examples you can click to try. */
 const HELP: { kind: keyof typeof FILTER_STYLE | 'key' | 'words'; title: string; hint: string; examples: string[] }[] = [
@@ -258,7 +258,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
                           <span className="shrink-0 font-mono text-[11px] text-slate-400">{r.key}</span>
-                          <span className={clsx('truncate text-sm font-medium', r.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800')}>
+                          <span className={clsx('truncate text-sm font-medium', isClosed(r.status) ? 'text-slate-400 line-through' : 'text-slate-800')}>
                             <Highlight text={r.title} words={words} />
                           </span>
                         </span>

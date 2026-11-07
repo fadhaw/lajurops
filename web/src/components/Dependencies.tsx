@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
-import { AlertTriangle, CheckCircle2, Hourglass, Link2, Plus, Search, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Hourglass, Link2, Plus, Search, X, XCircle } from 'lucide-react'
 import { useReadOnly } from '../lib/access'
 import { formatSchedule } from '../lib/dates'
 import { useDependencyMutations, useTasks } from '../lib/queries'
@@ -8,6 +8,7 @@ import type { Task } from '../lib/types'
 import { matchScore } from './ParentPicker'
 import { Popover } from './Popover'
 import { StatusPill, taskColor, TypeBadge } from './ui'
+import { isClosed } from '../lib/types'
 
 /**
  * "Waiting for" and "Blocking" lists for a daily/hourly task, e.g.
@@ -27,7 +28,7 @@ export function Dependencies({
   const { add, remove } = useDependencyMutations()
   const readOnly = useReadOnly()
   const [error, setError] = useState('')
-  const open = waitingFor.filter((t) => t.status !== 'done')
+  const open = waitingFor.filter((t) => !isClosed(t.status))
 
   const run = async (p: Promise<unknown>) => {
     setError('')
@@ -42,7 +43,7 @@ export function Dependencies({
   const linked = new Set([task.id, ...waitingFor.map((t) => t.id), ...blocking.map((t) => t.id)])
   // Suggest open tasks with the same parent (e.g. other steps of the same project).
   const { data: sameParent = [] } = useTasks({ parent_id: task.parent_id ?? '', type: 'daily,hourly' }, !readOnly && !!task.parent_id)
-  const siblings = sameParent.filter((c) => !linked.has(c.id) && c.status !== 'done')
+  const siblings = sameParent.filter((c) => !linked.has(c.id) && !isClosed(c.status))
 
   return (
     <section className="space-y-3">
@@ -50,7 +51,7 @@ export function Dependencies({
         <Link2 size={15} /> Dependencies
       </h3>
 
-      {open.length > 0 && task.status !== 'done' && (
+      {open.length > 0 && !isClosed(task.status) && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <Hourglass size={14} className="mt-px shrink-0" />
           <span>
@@ -72,7 +73,7 @@ export function Dependencies({
         empty="Not waiting for anything"
         items={waitingFor}
         onOpen={onOpen}
-        conflict={(t) => !!(t.status !== 'done' && t.end_at && task.start_at && Date.parse(t.end_at) > Date.parse(task.start_at))}
+        conflict={(t) => !!(!isClosed(t.status) && t.end_at && task.start_at && Date.parse(t.end_at) > Date.parse(task.start_at))}
         conflictText="finishes after this task starts"
         onRemove={readOnly ? undefined : (t) => run(remove.mutateAsync({ taskId: task.id, dependsOnId: t.id }))}
         picker={
@@ -91,7 +92,7 @@ export function Dependencies({
         empty="No tasks are waiting for this one"
         items={blocking}
         onOpen={onOpen}
-        conflict={(t) => !!(task.status !== 'done' && task.end_at && t.start_at && Date.parse(task.end_at) > Date.parse(t.start_at))}
+        conflict={(t) => !!(!isClosed(task.status) && task.end_at && t.start_at && Date.parse(task.end_at) > Date.parse(t.start_at))}
         conflictText="starts before this task finishes"
         onRemove={readOnly ? undefined : (t) => run(remove.mutateAsync({ taskId: t.id, dependsOnId: task.id }))}
         picker={
@@ -141,11 +142,11 @@ function DependencyList({
         <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
           {items.map((t) => (
             <li key={t.id} className="group flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-slate-50">
-              {t.status === 'done' ? <CheckCircle2 size={14} className="shrink-0 text-emerald-500" /> : <Hourglass size={14} className="shrink-0 text-amber-500" />}
+              {t.status === 'done' ? <CheckCircle2 size={14} className="shrink-0 text-emerald-500" /> : t.status === 'canceled' ? <XCircle size={14} className="shrink-0 text-slate-400" /> : <Hourglass size={14} className="shrink-0 text-amber-500" />}
               <button className="text-xs font-medium text-blue-600 hover:underline" onClick={() => onOpen(t.id)}>
                 {t.key}
               </button>
-              <button className={clsx('min-w-0 flex-1 truncate text-left', t.status === 'done' && 'text-slate-400 line-through')} onClick={() => onOpen(t.id)}>
+              <button className={clsx('min-w-0 flex-1 truncate text-left', isClosed(t.status) && 'text-slate-400 line-through')} onClick={() => onOpen(t.id)}>
                 {t.title}
               </button>
               {conflict(t) && (
@@ -206,7 +207,7 @@ function TaskSearch({
       .filter((t) => !exclude.has(t.id))
       .map((t) => ({ t, s: matchScore(t, q) }))
       .filter((r) => r.s > 0)
-      .sort((a, b) => b.s - a.s || Number(a.t.status === 'done') - Number(b.t.status === 'done') || a.t.number - b.t.number)
+      .sort((a, b) => b.s - a.s || Number(isClosed(a.t.status)) - Number(isClosed(b.t.status)) || a.t.number - b.t.number)
       .map((r) => r.t)
   }, [query, found, exclude, suggestions])
   const shown = results.slice(0, MAX_RESULTS)
@@ -273,7 +274,7 @@ function TaskSearch({
               <span className={clsx('h-2 w-2 shrink-0 rounded-full', taskColor(t))} />
               <span className="w-16 shrink-0 text-xs font-medium text-slate-400">{t.key}</span>
               <span className="min-w-0 flex-1">
-                <span className={clsx('block truncate', t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</span>
+                <span className={clsx('block truncate', isClosed(t.status) ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</span>
                 <span className="block truncate text-[11px] text-slate-400">{formatSchedule(t)}</span>
               </span>
             </li>

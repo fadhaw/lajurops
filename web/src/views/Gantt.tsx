@@ -21,7 +21,7 @@ import { useAccess } from '../lib/access'
 import { AvatarStack, Button, FilterBar, taskColor } from '../components/ui'
 import { defaultSpan, formatSchedule } from '../lib/dates'
 import { useTaskFilters, useTasks, useUpdateTask } from '../lib/queries'
-import { defaultChildType, type Task } from '../lib/types'
+import { defaultChildType, type Task, isClosed } from '../lib/types'
 
 type Unit = 'hour' | '6h' | 'day' | 'week' | 'month' | 'year'
 
@@ -575,7 +575,7 @@ export default function Gantt({ workspaceId }: { workspaceId: string }) {
               // Clamp bars to the loaded window so they don't widen the scroll area.
               const bx = start !== null ? Math.max(x(start), 0) : 0
               const bw = start !== null && end !== null ? Math.max(Math.min(x(end), width) - bx, 6) : 0
-              const color = t.status === 'done' ? 'bg-emerald-500' : taskColor(t)
+              const color = t.status === 'done' ? 'bg-emerald-500' : t.status === 'canceled' ? 'bg-slate-300' : taskColor(t)
               const inWindow = start !== null && end !== null && end > range.start && start < range.end
               return (
                 <div
@@ -605,7 +605,7 @@ export default function Gantt({ workspaceId }: { workspaceId: string }) {
                         {t.project_kind}
                       </span>
                     )}
-                    <button className={clsx('min-w-0 flex-1 truncate text-left text-sm', t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700', t.type === 'project' && 'font-semibold')} onClick={() => modal.openTask(t.id)} title={t.title}>
+                    <button className={clsx('min-w-0 flex-1 truncate text-left text-sm', isClosed(t.status) ? 'text-slate-400 line-through' : 'text-slate-700', t.type === 'project' && 'font-semibold')} onClick={() => modal.openTask(t.id)} title={t.title}>
                       {t.title}
                     </button>
                     {t.type !== 'hourly' && canEdit && (

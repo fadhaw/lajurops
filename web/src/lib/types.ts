@@ -20,7 +20,7 @@ export const canContain = (parent: TaskType, child: TaskType) => RANK[child] < R
 
 /** The type a new child task gets by default. */
 export const defaultChildType = (parent: TaskType): TaskType => (parent === 'project' ? 'daily' : 'hourly')
-export type Status = 'todo' | 'in_progress' | 'in_review' | 'done'
+export type Status = 'todo' | 'in_progress' | 'in_review' | 'rescheduled' | 'done' | 'canceled'
 export type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface User {
@@ -275,8 +275,19 @@ export const STATUSES: { id: Status; label: string }[] = [
   { id: 'todo', label: 'To Do' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },
+  { id: 'rescheduled', label: 'Rescheduled' },
   { id: 'done', label: 'Done' },
+  { id: 'canceled', label: 'Canceled' },
 ]
+
+/**
+ * Done or canceled: the task's work is over. Canceled tasks don't block
+ * others and aren't counted in progress, workload or commitments.
+ * Rescheduled tasks are still open. Projects only use the first four.
+ */
+export const isClosed = (s: Status) => s === 'done' || s === 'canceled'
+/** The tasks that count toward progress (done/total): all but canceled ones. */
+export const counted = <T extends { status: Status }>(list: T[]) => list.filter((t) => t.status !== 'canceled')
 
 export const PRIORITIES: Priority[] = ['low', 'medium', 'high', 'urgent']
 

@@ -12,7 +12,8 @@ import (
 // DefaultCapacityHours is a person's weekly capacity until they set one.
 const DefaultCapacityHours = 40
 
-// Commitment is what one person intends to finish in a week: the daily
+// Commitment is what one person intends to finish in a week (canceled
+// tasks drop out): the daily
 // tasks they picked (in their order), plus what is committed automatically:
 // every hourly task assigned to them that starts in the week, and every
 // short daily task (see AutoDailyMaxDays) assigned to them that is due in
@@ -149,13 +150,13 @@ func autoDaily(d, from, to string) string {
 var committedSQL = `
 	SELECT ct.user_id, ct.task_id, false AS automatic, ct.position
 	FROM commitment_tasks ct JOIN tasks d ON d.id = ct.task_id
-	WHERE ct.week_start = $1 AND d.type = 'daily'
+	WHERE ct.week_start = $1 AND d.type = 'daily' AND d.status <> 'canceled'
 	  AND ($4::uuid IS NULL OR ct.user_id = $4)
 	  AND ($5::text[] IS NULL OR d.workspace_id::text = ANY($5))
 	UNION ALL
 	SELECT ta.user_id, ta.task_id, true, 0
 	FROM task_assignees ta JOIN tasks h ON h.id = ta.task_id
-	WHERE ((h.type = 'hourly' AND h.start_at >= $2 AND h.start_at < $3)
+	WHERE h.status <> 'canceled' AND ((h.type = 'hourly' AND h.start_at >= $2 AND h.start_at < $3)
 	       OR (` + autoDaily("h", "$2", "$3") + `
 	           AND NOT EXISTS (SELECT 1 FROM commitment_tasks ct WHERE ct.task_id = h.id AND ct.user_id = ta.user_id AND ct.week_start = $1)))
 	  AND ($4::uuid IS NULL OR ta.user_id = $4)
@@ -199,9 +200,9 @@ func (s *Store) Commitments(ctx context.Context, week time.Time, scope Scope, us
 		WHERE ($2::uuid IS NULL OR u.id = $2)
 		  AND ($2::uuid IS NOT NULL OR (u.active AND u.deleted_at IS NULL AND `+memberOf("u", "$6", "$7")+`)
 		       OR EXISTS (SELECT 1 FROM commitment_tasks ct JOIN tasks d ON d.id = ct.task_id
-		                  WHERE ct.user_id = u.id AND ct.week_start = $1 AND ($6::text[] IS NULL OR d.workspace_id::text = ANY($6)))
+		                  WHERE ct.user_id = u.id AND ct.week_start = $1 AND d.status <> 'canceled' AND ($6::text[] IS NULL OR d.workspace_id::text = ANY($6)))
 		       OR EXISTS (SELECT 1 FROM task_assignees ta JOIN tasks h ON h.id = ta.task_id
-		                  WHERE ta.user_id = u.id AND ((h.type = 'hourly' AND h.start_at >= $4 AND h.start_at < $5) OR (`+autoDaily("h", "$4", "$5")+`))
+		                  WHERE ta.user_id = u.id AND h.status <> 'canceled' AND ((h.type = 'hourly' AND h.start_at >= $4 AND h.start_at < $5) OR (`+autoDaily("h", "$4", "$5")+`))
 		                    AND ($6::text[] IS NULL OR h.workspace_id::text = ANY($6))))
 		ORDER BY lower(coalesce(nullif(u.display_name, ''), u.username))`,
 		weekDate(week), user, DefaultCapacityHours, week, end, scopeArg(scope), s.defaultRole())
@@ -311,14 +312,14 @@ func (s *Store) overdue(ctx context.Context, week time.Time, user any, scope Sco
 			-- short daily tasks due in those weeks) come from their assignments.
 			SELECT ct.user_id, ct.task_id, ct.week_start AS wk
 			FROM commitment_tasks ct JOIN tasks d ON d.id = ct.task_id
-			WHERE ct.week_start >= $1 AND ct.week_start < $2 AND d.type = 'daily' AND d.status <> 'done'
+			WHERE ct.week_start >= $1 AND ct.week_start < $2 AND d.type = 'daily' AND d.status NOT IN ('done', 'canceled')
 			  AND ($5::uuid IS NULL OR ct.user_id = $5)
 			  AND ($6::text[] IS NULL OR d.workspace_id::text = ANY($6))
 			  AND EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = d.id AND a.user_id = ct.user_id)
 			UNION ALL
 			SELECT ta.user_id, ta.task_id, NULL
 			FROM task_assignees ta JOIN tasks h ON h.id = ta.task_id
-			WHERE h.status <> 'done'
+			WHERE h.status NOT IN ('done', 'canceled')
 			  AND ((h.type = 'hourly' AND h.start_at >= $3 AND h.start_at < $4) OR (`+autoDaily("h", "$3", "$4")+`))
 			  AND ($5::uuid IS NULL OR ta.user_id = $5)
 			  AND ($6::text[] IS NULL OR h.workspace_id::text = ANY($6))
