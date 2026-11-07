@@ -6,7 +6,7 @@ import { ReadOnlyContext, useAccess, useReadOnly } from '../lib/access'
 import { dotStyle } from '../lib/colors'
 import { formatCreatedFull, fromInput, toInput } from '../lib/dates'
 import { saveEnvironments, useProjectProgress, useRunbook, useUsers, useCategories, useCreateTask, useEnvironments, useDeleteTask, useDuplicateTask, useTask, useTasks, useUpdateTask, useWorkspaces, type TaskCreate, type TaskPatch } from '../lib/queries'
-import { canContain, defaultChildType, PRIORITIES, PROJECT_KINDS, STATUSES, TASK_TYPES, type Priority, type ProjectKind, type Status, type EnvironmentDraft, type Task, type TaskType } from '../lib/types'
+import { canContain, defaultChildType, PRIORITIES, PROJECT_KINDS, STATUSES, TASK_TYPES, type Priority, type ProjectKind, type Status, type EnvironmentDraft, type Task, type TaskType, isClosed, counted } from '../lib/types'
 import { Comments } from './Comments'
 import { DateRangeField, HourlyScheduleField } from './DateTimePicker'
 import { ParentPicker } from './ParentPicker'
@@ -664,6 +664,8 @@ function ChildTasks({ parent, items, onOpen }: { parent: Task; items: Task[]; on
   const [dragId, setDragId] = useState<string | null>(null)
   const [overGroup, setOverGroup] = useState<string | null>(null)
   const readOnly = useReadOnly()
+  // Canceled tasks don't count toward progress.
+  const total = counted(items).length
   const done = items.filter((s) => s.status === 'done').length
   const grouped = parent.type === 'project' && envs.length > 0
 
@@ -671,15 +673,15 @@ function ChildTasks({ parent, items, onOpen }: { parent: Task; items: Task[]; on
     <>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700">{parent.type === 'project' ? 'Tasks in this project' : 'Hourly tasks'}</h3>
-        {items.length > 0 && (
+        {total > 0 && (
           <span className="text-xs text-slate-500">
-            {done}/{items.length} done
+            {done}/{total} done
           </span>
         )}
       </div>
-      {items.length > 0 && (
+      {total > 0 && (
         <div className="mb-2 h-1.5 overflow-hidden rounded bg-slate-100">
-          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(done / total) * 100}%` }} />
         </div>
       )}
     </>
@@ -769,11 +771,11 @@ function ChildTasks({ parent, items, onOpen }: { parent: Task; items: Task[]; on
   )
 }
 
-/** Open tasks first; finished ones fold into a "N done" row that expands on click. */
+/** Open tasks first; finished ones (done or canceled) fold into a "N done" row that expands on click. */
 function RowsWithDoneCollapsed({ items, row }: { items: Task[]; row: (t: Task) => ReactNode }) {
   const [showDone, setShowDone] = useState(false)
-  const open = items.filter((t) => t.status !== 'done')
-  const done = items.filter((t) => t.status === 'done')
+  const open = items.filter((t) => !isClosed(t.status))
+  const done = items.filter((t) => isClosed(t.status))
   return (
     <>
       {open.map(row)}
@@ -826,10 +828,10 @@ function ChildRow({
       <button className="text-xs font-medium text-blue-600 hover:underline" onClick={() => onOpen(s.id)}>
         {s.key}
       </button>
-      <button className={clsx('min-w-0 flex-1 truncate text-left', s.status === 'done' && 'text-slate-400 line-through')} onClick={() => onOpen(s.id)}>
+      <button className={clsx('min-w-0 flex-1 truncate text-left', isClosed(s.status) && 'text-slate-400 line-through')} onClick={() => onOpen(s.id)}>
         {s.title}
       </button>
-      {s.open_blockers > 0 && s.status !== 'done' && (
+      {s.open_blockers > 0 && !isClosed(s.status) && (
         <span title="Waiting for other tasks">
           <Hourglass size={12} className="text-amber-500" />
         </span>
@@ -987,7 +989,14 @@ function BackBar({ id, onBack }: { id: string; onBack: () => void }) {
   )
 }
 
-const STATUS_DOT: Record<Status, string> = { todo: 'bg-slate-400', in_progress: 'bg-blue-500', in_review: 'bg-amber-500', done: 'bg-emerald-500' }
+const STATUS_DOT: Record<Status, string> = {
+  todo: 'bg-slate-400',
+  in_progress: 'bg-blue-500',
+  in_review: 'bg-amber-500',
+  rescheduled: 'bg-orange-500',
+  done: 'bg-emerald-500',
+  canceled: 'bg-rose-500',
+}
 const StatusDot = ({ status }: { status: Status }) => <span className={clsx('h-2.5 w-2.5 shrink-0 rounded-full', STATUS_DOT[status])} />
 
 /** "Created Mon, Sep 28, 2026 14:05 by Alice" in the dialog header. */

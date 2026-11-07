@@ -457,7 +457,7 @@ function StepRow({
             onClick={() => onOpen?.(t.id)}
           >
             <span className="font-medium text-blue-600">{key}</span>
-            <span className={clsx(t.status === 'done' ? 'text-green-700' : t.status === 'todo' ? 'text-slate-500' : 'text-amber-700')}>{statusLabel(t.status)}</span>
+            <span className={clsx(t.status === 'done' ? 'text-green-700' : t.status === 'canceled' ? 'text-rose-600' : t.status === 'todo' ? 'text-slate-500' : 'text-amber-700')}>{statusLabel(t.status)}</span>
           </button>
         )}
       </span>

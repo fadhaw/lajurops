@@ -127,7 +127,7 @@ var hourlySoonSQL = insertReminder + `
 	SELECT a.user_id, 'hourly_soon', t.id, jsonb_build_object('start_at', t.start_at),
 	       'hourly_soon:' || t.id || ':' || extract(epoch FROM t.start_at)::bigint
 	FROM tasks t` + ownerJoin + `
-	WHERE t.type = 'hourly' AND t.status <> 'done'
+	WHERE t.type = 'hourly' AND t.status NOT IN ('done', 'canceled')
 	  AND t.start_at > $1 AND t.start_at <= $1 + make_interval(mins => $2)
 	  AND t.start_at - make_interval(mins => coalesce(ns.hourly_lead, 15)) <= $1
 	  AND NOT ('hourly_soon' = ANY (coalesce(ns.disabled, '{}')))` + onConflict
@@ -141,7 +141,7 @@ var stepSoonSQL = insertReminder + `
 	FROM runbook_steps st
 	JOIN runbook_sections sec ON sec.id = st.section_id
 	JOIN tasks t ON t.id = sec.task_id` + ownerJoin + `
-	WHERE st.task_id IS NULL AND NOT st.done AND t.status <> 'done'
+	WHERE st.task_id IS NULL AND NOT st.done AND t.status NOT IN ('done', 'canceled')
 	  AND st.start_at > $1 AND st.start_at <= $1 + make_interval(mins => $2)
 	  AND st.start_at - make_interval(mins => coalesce(ns.step_lead, 10)) <= $1
 	  AND NOT ('step_soon' = ANY (coalesce(ns.disabled, '{}')))` + onConflict
@@ -154,7 +154,7 @@ var stepTaskDueSQL = insertReminder + `
 	FROM tasks t
 	JOIN LATERAL (SELECT sec.task_id AS id FROM runbook_steps st JOIN runbook_sections sec ON sec.id = st.section_id
 	              WHERE st.task_id = t.id LIMIT 1) rb ON true` + ownerJoin + `
-	WHERE t.type = 'daily' AND t.status <> 'done' AND $2::int > 0
+	WHERE t.type = 'daily' AND t.status NOT IN ('done', 'canceled') AND $2::int > 0
 	  -- Ending within a day of now in any time zone (uses an index), then exactly today locally.
 	  AND t.end_at > $1::timestamptz - interval '1 day' AND t.end_at <= $1::timestamptz + interval '2 days'
 	  AND ((t.end_at - interval '1 second') AT TIME ZONE coalesce(nullif(ns.tz, ''), 'UTC'))::date

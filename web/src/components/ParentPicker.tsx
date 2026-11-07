@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { CornerDownLeft, FolderKanban, Link2Off, Search } from 'lucide-react'
-import { canContain, type Task, type TaskType } from '../lib/types'
+import { canContain, type Task, type TaskType, isClosed } from '../lib/types'
 import { Popover, TriggerButton } from './Popover'
 import { StatusPill, taskColor } from './ui'
 
@@ -53,7 +53,7 @@ export function ParentPicker({
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const openFirst = (a: Task, b: Task) => Number(a.status === 'done') - Number(b.status === 'done')
+    const openFirst = (a: Task, b: Task) => Number(isClosed(a.status)) - Number(isClosed(b.status))
     if (!q) {
       // Browsing: projects only (open ones first), plus the current parent.
       const projects = allowed.filter((c) => c.type === 'project').sort((a, b) => openFirst(a, b) || a.title.localeCompare(b.title))
@@ -151,7 +151,7 @@ export function ParentPicker({
                 <span className={clsx('h-2 w-2 shrink-0', taskColor(c), c.type === 'project' ? 'rounded-sm' : 'rounded-full')} />
                 <span className="w-16 shrink-0 text-xs font-medium text-slate-400">{c.key}</span>
                 <span className="min-w-0 flex-1">
-                  <span className={clsx('block truncate', c.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800')}>{c.title}</span>
+                  <span className={clsx('block truncate', isClosed(c.status) ? 'text-slate-400 line-through' : 'text-slate-800')}>{c.title}</span>
                   {project && <span className="block truncate text-[11px] text-slate-400">in {project.title}</span>}
                 </span>
                 {c.type === 'daily' && <span className="shrink-0 text-[10px] font-medium text-sky-700 uppercase">Daily</span>}
@@ -160,7 +160,7 @@ export function ParentPicker({
                     {c.project_kind}
                   </span>
                 )}
-                {c.status === 'done' && <StatusPill status="done" />}
+                {isClosed(c.status) && <StatusPill status={c.status} />}
               </Row>
             )
           })}

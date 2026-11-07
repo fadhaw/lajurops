@@ -12,6 +12,7 @@ import { useAccess } from '../lib/access'
 import { formatSchedule, hoursBetween } from '../lib/dates'
 import { useCommitments, useDefaultWorkspace, useMe, useMyCommitment, useSaveCommitment, useTasks, useUpdateTask, useUsers, useWorkspaces } from '../lib/queries'
 import type { Commitment, CommitmentBrief, CommittedTask, Task } from '../lib/types'
+import { isClosed } from '../lib/types'
 
 const fmtH = (h: number) => (Math.round(h * 10) / 10).toLocaleString() + 'h'
 
@@ -236,7 +237,7 @@ function MyWeek({ week, onDirty }: { week: string; onDirty: (dirty: boolean) => 
   const isShared = (t: Task) => t.assignee_ids.length > 0 && !isMine(t) && canEdit(t.workspace_id)
   const canTake = (t: Task) => isMine(t) || isFree(t) || isShared(t)
   const autoIds = new Set(auto.map((t) => t.id))
-  const available = (list: Task[]) => list.filter((t) => t.type === 'daily' && t.status !== 'done' && !ids.includes(t.id) && !autoIds.has(t.id))
+  const available = (list: Task[]) => list.filter((t) => t.type === 'daily' && !isClosed(t.status) && !ids.includes(t.id) && !autoIds.has(t.id))
   // Unfinished commitments from earlier weeks get their own section (and
   // aren't repeated under "Assigned to you"); picked ones move to the right.
   const openOverdue = (mine?.overdue ?? []).filter((t) => !ids.includes(t.id))

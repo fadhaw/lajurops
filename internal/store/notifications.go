@@ -194,22 +194,25 @@ func (s *Store) UpdateTaskBy(ctx context.Context, actorID, id string, patch map[
 			change: map[string]any{"kind": NotifyRescheduled, "type": after.Type,
 				"from": []any{before.StartAt, before.EndAt}, "to": []any{after.StartAt, after.EndAt}}})
 	}
-	if before.Status != "done" && after.Status == "done" && after.Type != "project" {
+	if !closed(before.Status) && closed(after.Status) && after.Type != "project" {
 		s.notifyDone(ctx, actorID, after)
 	}
 	return after, nil
 }
 
-// notifyDone handles a task becoming done: owners of tasks that waited
+// closed reports whether a status ends a task's work: done, or canceled.
+func closed(status string) bool { return status == "done" || status == "canceled" }
+
+// notifyDone handles a task becoming done or canceled: owners of tasks that waited
 // only on unfinished work that's now all done, and owners of its project
 // when every task in it is done (and the project isn't closed yet).
 func (s *Store) notifyDone(ctx context.Context, actorID string, t Task) {
 	rows, err := s.db.Query(ctx, `
 		SELECT w.id::text, (SELECT coalesce(array_agg(a.user_id::text), '{}') FROM task_assignees a WHERE a.task_id = w.id)
 		FROM task_dependencies d JOIN tasks w ON w.id = d.task_id
-		WHERE d.depends_on_id = $1 AND w.status <> 'done'
+		WHERE d.depends_on_id = $1 AND w.status NOT IN ('done', 'canceled')
 		  AND NOT EXISTS (SELECT 1 FROM task_dependencies d2 JOIN tasks b ON b.id = d2.depends_on_id
-		                  WHERE d2.task_id = w.id AND b.status <> 'done')`, t.ID)
+		                  WHERE d2.task_id = w.id AND b.status NOT IN ('done', 'canceled'))`, t.ID)
 	if err != nil {
 		slog.Error("notification: unblocked", "err", err)
 		return
@@ -239,9 +242,9 @@ func (s *Store) notifyDone(ctx context.Context, actorID string, t Task) {
 			FROM tasks t LEFT JOIN tasks p1 ON p1.id = t.parent_id LEFT JOIN tasks p2 ON p2.id = p1.parent_id
 			WHERE t.id = $1
 		), d AS (
-			SELECT c.status FROM p JOIN tasks c ON c.parent_id = p.id
+			SELECT c.status FROM p JOIN tasks c ON c.parent_id = p.id WHERE c.status <> 'canceled'
 			UNION ALL
-			SELECT g.status FROM p JOIN tasks c ON c.parent_id = p.id JOIN tasks g ON g.parent_id = c.id
+			SELECT g.status FROM p JOIN tasks c ON c.parent_id = p.id JOIN tasks g ON g.parent_id = c.id WHERE g.status <> 'canceled'
 		)
 		SELECT pr.id::text, (SELECT coalesce(array_agg(a.user_id::text), '{}') FROM task_assignees a WHERE a.task_id = pr.id),
 		       (SELECT count(*) FROM d)

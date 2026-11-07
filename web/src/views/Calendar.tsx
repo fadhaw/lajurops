@@ -15,6 +15,7 @@ import { formatSchedule } from '../lib/dates'
 import { Button, FilterBar, StatusPill } from '../components/ui'
 import { useTaskFilters, useTasks } from '../lib/queries'
 import type { Task } from '../lib/types'
+import { isClosed } from '../lib/types'
 
 type View = 'month' | 'week' | 'day' | 'agenda'
 const VIEWS: { id: View; label: string }[] = [
@@ -305,7 +306,7 @@ function GroupPanel({
                   <span className="tabular-nums">{formatSchedule(t)}</span>
                   <span className="ml-auto font-medium text-slate-400">{t.key}</span>
                 </div>
-                <div className={clsx('truncate text-sm', t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</div>
+                <div className={clsx('truncate text-sm', isClosed(t.status) ? 'text-slate-400 line-through' : 'text-slate-800')}>{t.title}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-1">
                   {t.environment_name && <EnvBadge name={t.environment_name} color={t.environment_color} size="xs" />}
                   {!byEnv && p && (

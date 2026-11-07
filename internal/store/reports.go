@@ -9,7 +9,8 @@ import (
 )
 
 // Workload summarises one user's assigned daily and hourly work in a period
-// (project tasks are containers and are not counted). Shared tasks count
+// (project tasks are containers and canceled tasks aren't work: neither is
+// counted). Shared tasks count
 // fully for every owner. A task counts
 // toward the period its start_at falls in (created_at when unscheduled).
 // Hourly hours are the time a user spent on hourly work: overlapping tasks
@@ -66,7 +67,7 @@ func (s *Store) WorkloadReport(ctx context.Context, from, to time.Time, scope Sc
 		      AND coalesce(t.start_at, t.created_at) >= $1
 		      AND coalesce(t.start_at, t.created_at) <  $2
 		      AND ($3::text[] IS NULL OR t.workspace_id::text = ANY($3))
-		      AND t.type <> 'project'
+		      AND t.type <> 'project' AND t.status <> 'canceled'
 		GROUP BY u.id
 		HAVING (u.active AND u.deleted_at IS NULL AND `+memberOf("u", "$3", "$4")+`) OR count(t.id) > 0
 		ORDER BY 8 DESC, 5 DESC, lower(u.username)`,
@@ -105,7 +106,7 @@ func (s *Store) WorkloadReport(ctx context.Context, from, to time.Time, scope Sc
 		       count(*) FILTER (WHERE t.type = 'daily'), count(*) FILTER (WHERE t.type = 'daily' AND t.status = 'done'),
 		       coalesce(sum(t.actual_hours::float8), 0)
 		FROM tasks t
-		WHERE t.type <> 'project'
+		WHERE t.type <> 'project' AND t.status <> 'canceled'
 		  AND coalesce(t.start_at, t.created_at) >= $1 AND coalesce(t.start_at, t.created_at) < $2
 		  AND ($3::text[] IS NULL OR t.workspace_id::text = ANY($3))
 		  AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id)`, from, to, scopeArg(scope)).
@@ -141,7 +142,7 @@ func (s *Store) hourlyHours(ctx context.Context, from, to time.Time, scope Scope
 		SELECT coalesce(ta.user_id::text, '`+UnassignedID+`'), t.start_at, t.end_at, t.actual_hours::float8
 		FROM tasks t
 		LEFT JOIN task_assignees ta ON ta.task_id = t.id
-		WHERE t.type = 'hourly'
+		WHERE t.type = 'hourly' AND t.status <> 'canceled'
 		  AND coalesce(t.start_at, t.created_at) >= $1
 		  AND coalesce(t.start_at, t.created_at) <  $2
 		  AND ($3::text[] IS NULL OR t.workspace_id::text = ANY($3))`,
@@ -212,7 +213,7 @@ func (s *Store) WorkloadTasks(ctx context.Context, userID string, from, to time.
 		  AND coalesce(t.start_at, t.created_at) >= $2
 		  AND coalesce(t.start_at, t.created_at) <  $3
 		  AND ($4::text[] IS NULL OR t.workspace_id::text = ANY($4))
-		  AND t.type <> 'project'
+		  AND t.type <> 'project' AND t.status <> 'canceled'
 		ORDER BY coalesce(t.start_at, t.created_at)`, userID, from, to, scopeArg(scope))
 	if err != nil {
 		return nil, err

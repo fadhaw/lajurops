@@ -11,7 +11,7 @@ import { AvatarStack, FilterBar, PriorityIcon, TypeBadge } from '../components/u
 import { useAccess } from '../lib/access'
 import { formatCreatedFull, formatCreatedShort, formatSchedule } from '../lib/dates'
 import { useTaskFilters, useTasks, useUpdateTask } from '../lib/queries'
-import { STATUSES, type Status, type Task } from '../lib/types'
+import { STATUSES, type Status, type Task, isClosed } from '../lib/types'
 
 /** Projects are grouped by category; daily/hourly work by status. */
 export default function Board({ workspaceId }: { workspaceId: string }) {
@@ -110,7 +110,7 @@ function TaskBoard({ workspaceId }: { workspaceId: string }) {
         <DateFilter value={dates} onChange={setDates} />
       </FilterBar>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-x-auto md:grid-cols-4">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-x-auto md:grid-flow-col md:grid-cols-none md:auto-cols-[minmax(16rem,1fr)]">
         {STATUSES.map((col) => {
           const view = viewOf(col.id)
           // Search and sort apply to every column, done included.
@@ -157,7 +157,7 @@ function TaskBoard({ workspaceId }: { workspaceId: string }) {
                       task={t}
                       project={projectOf(t)}
                       parent={t.parent_id ? byId.get(t.parent_id) : undefined}
-                      openBlockers={t.blocked_by.map((id) => byId.get(id)).filter((b): b is Task => !!b && b.status !== 'done')}
+                      openBlockers={t.blocked_by.map((id) => byId.get(id)).filter((b): b is Task => !!b && !isClosed(b.status))}
                       onOpen={() => modal.openTask(t.id)}
                       draggable={canEdit}
                       onDragStart={(e) => {
@@ -228,7 +228,7 @@ function Card({
       onClick={onOpen}
       className="cursor-pointer rounded-md border border-slate-200 bg-white p-2.5 shadow-sm transition hover:border-blue-300 hover:shadow"
     >
-      {openBlockers.length > 0 && t.status !== 'done' && (
+      {openBlockers.length > 0 && !isClosed(t.status) && (
         <p
           className="mb-1 flex items-center gap-1 truncate rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800"
           title={`Waiting for: ${openBlockers.map((b) => `${b.key} ${b.title}`).join(', ')}`}
@@ -245,7 +245,7 @@ function Card({
           {parent && parent.id !== project.id && <span className="truncate text-slate-400">› {parent.key}</span>}
         </p>
       )}
-      <p className={clsx('text-sm leading-snug text-slate-800', t.status === 'done' && 'text-slate-400 line-through')}>
+      <p className={clsx('text-sm leading-snug text-slate-800', isClosed(t.status) && 'text-slate-400 line-through')}>
         {t.environment_name && <EnvBadge name={t.environment_name} color={t.environment_color} size="xs" className="mr-1 align-[1px]" />}
         {t.title}
       </p>
