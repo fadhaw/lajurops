@@ -8,7 +8,7 @@ import { useTaskModal } from '../components/TaskModal'
 import { EnvBadge } from '../components/Environments'
 import { Avatar, Button, Empty, StatusPill, TypeBadge, userName } from '../components/ui'
 import { formatSchedule, hoursBetween } from '../lib/dates'
-import { useWorkspaces, useUsers, useWorkload, useWorkloadTasks } from '../lib/queries'
+import { useDefaultWorkspace, useWorkspaces, useUsers, useWorkload, useWorkloadTasks } from '../lib/queries'
 import type { Workload } from '../lib/types'
 import WeekGrid, { UnassignedAvatar } from './WeekGrid'
 
@@ -22,7 +22,7 @@ export default function Reports() {
   // The week grid is always one week.
   const period: Period = view === 'grid' ? 'week' : periodChoice
   const [anchor, setAnchor] = useState(() => new Date())
-  const [workspaceId, setWorkspaceId] = useState('')
+  const [workspaceId, setWorkspaceId] = useDefaultWorkspace()
   const [open, setOpen] = useState<string | null>(null)
   const { data: workspaces = [] } = useWorkspaces()
 

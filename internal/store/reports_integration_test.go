@@ -79,3 +79,83 @@ func TestWorkloadUnassigned(t *testing.T) {
 		}
 	}
 }
+
+// Workload and commitments scoped to a workspace list only its members
+// (plus anyone with tasks in it), and a user's default workspace round-trips.
+func TestReportsListOnlyMembers(t *testing.T) {
+	st, pool := testStore(t)
+	ctx := context.Background()
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	k1, k2 := "RA"+suffix[len(suffix)-5:], "RB"+suffix[len(suffix)-5:]
+	ws1, err := st.CreateWorkspace(ctx, WorkspaceInput{Key: k1, Name: "one"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws2, _ := st.CreateWorkspace(ctx, WorkspaceInput{Key: k2, Name: "two"}, "")
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM workspaces WHERE key = ANY($1)`, []string{k1, k2}) })
+	user := func(n string) User {
+		u, err := st.UpsertUser(ctx, "itest-rm-"+n+suffix, n+suffix, "", n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, u.ID) })
+		return u
+	}
+	one, twoA, twoB := user("one"), user("twoa"), user("twob")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(st.SetUserAccess(ctx, one.ID, map[string]string{ws1.ID: RoleEditor, ws2.ID: RoleNone}))
+	must(st.SetUserAccess(ctx, twoA.ID, map[string]string{ws1.ID: RoleNone, ws2.ID: RoleEditor}))
+	must(st.SetUserAccess(ctx, twoB.ID, map[string]string{ws1.ID: RoleNone, ws2.ID: RoleViewer}))
+
+	week := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	names := func(scope Scope) (workload, commitments map[string]bool) {
+		t.Helper()
+		workload, commitments = map[string]bool{}, map[string]bool{}
+		rows, err := st.WorkloadReport(ctx, week, week.AddDate(0, 0, 7), scope)
+		must(err)
+		for _, r := range rows {
+			workload[r.UserID] = true
+		}
+		list, err := st.Commitments(ctx, week, scope, "", true)
+		must(err)
+		for _, c := range list {
+			commitments[c.UserID] = true
+		}
+		return
+	}
+	w, c := names(Scope{ws2.ID})
+	for _, m := range []map[string]bool{w, c} {
+		if m[one.ID] || !m[twoA.ID] || !m[twoB.ID] {
+			t.Errorf("workspace two lists one=%v twoA=%v twoB=%v, want only the two members", m[one.ID], m[twoA.ID], m[twoB.ID])
+		}
+	}
+	// Work assigned in a workspace lists its owner there, member or not.
+	start := week.Add(9 * time.Hour)
+	end := start.Add(time.Hour)
+	_, err = st.CreateTask(ctx, TaskInput{WorkspaceID: ws2.ID, Title: "help out", Type: "hourly", AssigneeIDs: []string{one.ID}, StartAt: &start, EndAt: &end}, "")
+	must(err)
+	if w, c := names(Scope{ws2.ID}); !w[one.ID] || !c[one.ID] {
+		t.Errorf("owner of a task in workspace two not listed: workload=%v commitments=%v", w[one.ID], c[one.ID])
+	}
+	// Every workspace (admins): everyone.
+	if w, c := names(nil); !w[one.ID] || !w[twoA.ID] || !c[twoB.ID] {
+		t.Error("unscoped report misses users")
+	}
+
+	must(st.SetDefaultWorkspace(ctx, twoA.ID, ws2.ID))
+	if ws, err := st.DefaultWorkspace(ctx, twoA.ID); err != nil || ws != ws2.ID {
+		t.Errorf("default workspace = %q, %v", ws, err)
+	}
+	must(st.SetDefaultWorkspace(ctx, twoA.ID, ""))
+	if ws, _ := st.DefaultWorkspace(ctx, twoA.ID); ws != "" {
+		t.Errorf("cleared default workspace = %q", ws)
+	}
+	if err := st.SetDefaultWorkspace(ctx, twoA.ID, "00000000-0000-0000-0000-000000000000"); err == nil {
+		t.Error("unknown workspace accepted")
+	}
+}

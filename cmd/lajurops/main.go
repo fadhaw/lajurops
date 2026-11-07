@@ -62,6 +62,7 @@ func run() error {
 	}
 
 	st := store.New(pool)
+	st.DefaultRole = cfg.DefaultWorkspaceRole
 	// Notices database outages, so the API answers "database unavailable" at once.
 	go st.WatchDB(ctx)
 	// Reminders (hourly tasks and runbook steps starting soon, Monday

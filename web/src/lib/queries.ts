@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { keepPreviousData, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { api, ApiError } from './api'
@@ -20,6 +20,17 @@ export const queryClient = new QueryClient({
 })
 
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') })
+
+/**
+ * The workspace filter of Hourly Workload and Weekly Commitment: starts on
+ * the user's default workspace (set by an admin) once /me loads, until
+ * they pick another; "" means all workspaces.
+ */
+export function useDefaultWorkspace() {
+  const def = useMe().data?.default_workspace_id ?? ''
+  const [picked, setPicked] = useState<string | null>(null)
+  return [picked ?? def, setPicked] as const
+}
 
 export function useUsers() {
   const q = useQuery({ queryKey: ['users'], queryFn: () => api<User[]>('/users') })
@@ -182,6 +193,15 @@ export function useCreateTask() {
   })
 }
 
+/** Copies a task with the tasks inside it; resolves to the top copy. */
+export function useDuplicateTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<Task>(`/tasks/${id}/duplicate`, { method: 'POST' }),
+    onSettled: () => invalidateTaskData(qc),
+  })
+}
+
 export function useDeleteTask() {
   const qc = useQueryClient()
   return useMutation({
@@ -258,10 +278,16 @@ export function useSaveAdminUser() {
 export interface UserAccess {
   workspaces: MemberAccess[]
   default_role: 'viewer' | 'none'
+  /** Where the user's Hourly Workload and Weekly Commitment open; "" for all workspaces. */
+  default_workspace_id: string
 }
 
 export const useUserAccess = (keycloakId?: string) =>
   useQuery({ queryKey: ['user-access', keycloakId], queryFn: () => api<UserAccess>(`/admin/users/${keycloakId}/access`), enabled: !!keycloakId })
+
+/** Sets the workspace a user's report views open on ("" for all). */
+export const saveDefaultWorkspace = (keycloakId: string, workspaceId: string) =>
+  api<UserAccess>(`/admin/users/${keycloakId}/default-workspace`, { method: 'PUT', body: { workspace_id: workspaceId } })
 
 /** Saves a user's role per workspace id. */
 export const saveUserAccess = (keycloakId: string, roles: Record<string, MemberRole>) =>

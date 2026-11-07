@@ -99,6 +99,7 @@ func (a *API) routes(r chi.Router) {
 	r.Get("/tasks/{id}", a.getTask)
 	r.Patch("/tasks/{id}", a.updateTask)
 	r.Delete("/tasks/{id}", a.deleteTask)
+	r.Post("/tasks/{id}/duplicate", a.duplicateTask)
 
 	r.Get("/tasks/{id}/environments", a.listEnvironments)
 	r.Put("/tasks/{id}/environments", a.setEnvironments)
@@ -144,6 +145,7 @@ func (a *API) routes(r chi.Router) {
 		r.Delete("/users/{id}", a.adminDeleteUser)
 		r.Get("/users/{id}/access", a.adminGetAccess)
 		r.Put("/users/{id}/access", a.adminSetAccess)
+		r.Put("/users/{id}/default-workspace", a.adminSetDefaultWorkspace)
 	})
 }
 
@@ -167,6 +169,10 @@ type me struct {
 	// without access are left out); null for admins, who can do everything.
 	WorkspaceRoles     map[string]string `json:"workspace_roles"`
 	CanCreateWorkspace bool              `json:"can_create_workspace"`
+	// DefaultWorkspaceID is where Hourly Workload and Weekly Commitment
+	// open (set by an admin); null for all workspaces, or when the user
+	// can no longer see it.
+	DefaultWorkspaceID *string `json:"default_workspace_id"`
 }
 
 func (a *API) getMe(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +187,19 @@ func (a *API) getMe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	create, err := a.canCreateWorkspaces(r)
-	respond(w, me{auth.From(r.Context()), roles, create}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	var def *string
+	p := auth.From(r.Context())
+	if ws, err := a.store.DefaultWorkspace(r.Context(), p.ID); err == nil && ws != "" && (roles == nil || roles[ws] != "") {
+		def = &ws
+	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+		respond(w, nil, err)
+		return
+	}
+	respond(w, me{p, roles, create, def}, nil)
 }
 
 func (a *API) listUsers(w http.ResponseWriter, r *http.Request) {

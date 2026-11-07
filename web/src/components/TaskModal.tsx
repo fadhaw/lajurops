@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { addHours, differenceInMinutes, setHours, startOfDay } from 'date-fns'
-import { AlertTriangle, ArrowLeft, CalendarX, CheckCircle2, ChevronRight, CircleDot, Eye, Flag, FolderKanban, Hourglass, Loader2, Plus, RotateCcw, Tags, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarX, CheckCircle2, ChevronRight, CircleDot, Copy, Eye, Flag, FolderKanban, Hourglass, Loader2, Plus, RotateCcw, Tags, Trash2, X } from 'lucide-react'
 import { ReadOnlyContext, useAccess, useReadOnly } from '../lib/access'
 import { dotStyle } from '../lib/colors'
 import { formatCreatedFull, fromInput, toInput } from '../lib/dates'
-import { saveEnvironments, useProjectProgress, useRunbook, useUsers, useCategories, useCreateTask, useEnvironments, useDeleteTask, useTask, useTasks, useUpdateTask, useWorkspaces, type TaskCreate, type TaskPatch } from '../lib/queries'
+import { saveEnvironments, useProjectProgress, useRunbook, useUsers, useCategories, useCreateTask, useEnvironments, useDeleteTask, useDuplicateTask, useTask, useTasks, useUpdateTask, useWorkspaces, type TaskCreate, type TaskPatch } from '../lib/queries'
 import { canContain, defaultChildType, PRIORITIES, PROJECT_KINDS, STATUSES, TASK_TYPES, type Priority, type ProjectKind, type Status, type EnvironmentDraft, type Task, type TaskType } from '../lib/types'
 import { Comments } from './Comments'
 import { DateRangeField, HourlyScheduleField } from './DateTimePicker'
@@ -240,6 +240,7 @@ function TaskForm({
   const update = useUpdateTask()
   const create = useCreateTask()
   const del = useDeleteTask()
+  const dup = useDuplicateTask()
   const up = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((s) => ({ ...s, [k]: v }))
 
   // Possible parents: project and daily tasks in the same workspace.
@@ -324,6 +325,24 @@ function TaskForm({
     else onClose()
   }
 
+  const duplicate = async () => {
+    if (!task) return
+    // Projects count their grandchildren too; a daily task's children are its hourly tasks.
+    const inside = task.type === 'project' ? projectCounts.total : task.subtask_count
+    const extra = inside ? ` with the ${inside} task${inside === 1 ? '' : 's'} inside it` : ''
+    if (!confirm(`Duplicate ${task.key}${extra}?
+
+Copies keep owners, dates and estimates, and start as To Do.`)) return
+    setErr('')
+    try {
+      const copy = await dup.mutateAsync(task.id)
+      if (onOpen) onOpen(copy.id)
+      else onClose()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   const busy = update.isPending || create.isPending
   // Marking a task done with unticked runbook steps only warns. Runbooks are for hourly tasks.
   const { data: runbook = [] } = useRunbook(task?.type === 'hourly' ? task.id : undefined)
@@ -356,6 +375,11 @@ function TaskForm({
             <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600" title="You have viewer access to this workspace">
               <Eye size={12} /> View only
             </span>
+          )}
+          {task && !readOnly && (
+            <Button variant="ghost" onClick={duplicate} disabled={dup.isPending} title="Duplicate task (with the tasks inside it)">
+              {dup.isPending ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+            </Button>
           )}
           {task && !readOnly && (
             <Button variant="ghost" onClick={remove} title="Delete task">

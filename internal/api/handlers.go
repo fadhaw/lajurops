@@ -275,6 +275,15 @@ func (a *API) createTask(w http.ResponseWriter, r *http.Request) {
 	respondStatus(w, http.StatusCreated, t, err)
 }
 
+// duplicateTask copies a task with the tasks inside it (see store.DuplicateTask).
+func (a *API) duplicateTask(w http.ResponseWriter, r *http.Request) {
+	if !a.requireTask(w, r, chi.URLParam(r, "id"), levelEditor) {
+		return
+	}
+	t, err := a.store.DuplicateTask(r.Context(), chi.URLParam(r, "id"), auth.UserFrom(r.Context()).ID)
+	respondStatus(w, http.StatusCreated, t, err)
+}
+
 func (a *API) updateTask(w http.ResponseWriter, r *http.Request) {
 	var patch map[string]json.RawMessage
 	if err := decode(r, &patch); err != nil {
