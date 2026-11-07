@@ -10,7 +10,7 @@ import { Avatar, AvatarStack, Button, Empty, StatusPill, TypeBadge, inputCls, us
 import { SearchSelect } from '../components/SearchSelect'
 import { useAccess } from '../lib/access'
 import { formatSchedule, hoursBetween } from '../lib/dates'
-import { useCommitments, useMe, useMyCommitment, useSaveCommitment, useTasks, useUpdateTask, useUsers, useWorkspaces } from '../lib/queries'
+import { useCommitments, useDefaultWorkspace, useMe, useMyCommitment, useSaveCommitment, useTasks, useUpdateTask, useUsers, useWorkspaces } from '../lib/queries'
 import type { Commitment, CommitmentBrief, CommittedTask, Task } from '../lib/types'
 
 const fmtH = (h: number) => (Math.round(h * 10) / 10).toLocaleString() + 'h'
@@ -26,7 +26,7 @@ const plannedHours = (c: Pick<Commitment, 'hourly_hours'>, daily: Pick<Task, 'es
 export default function Commitments() {
   const [view, setView] = useState<'mine' | 'team'>('mine')
   const [anchor, setAnchor] = useState(() => new Date())
-  const [workspaceId, setWorkspaceId] = useState('')
+  const [workspaceId, setWorkspaceId] = useDefaultWorkspace()
   const { data: workspaces = [] } = useWorkspaces()
   const [dirty, setDirty] = useState(false)
 

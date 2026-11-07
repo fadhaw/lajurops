@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { format } from 'date-fns'
-import { ChevronLeft, ChevronRight, KeyRound, Loader2, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, UserX, Wand2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FolderKanban, KeyRound, Loader2, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, UserX, Wand2, X } from 'lucide-react'
 import { Avatar, Button, Empty, Field, inputCls } from '../components/ui'
+import { SearchSelect } from '../components/SearchSelect'
 import { ApiError } from '../lib/api'
 import { appConfig } from '../lib/auth'
-import { saveUserAccess, useAdminUsers, useDeleteAdminUser, useMe, usePurgeUser, useRemovedUsers, useSaveAdminUser, useSyncUsers, useUserAccess, useWorkspaces } from '../lib/queries'
+import { saveDefaultWorkspace, saveUserAccess, useAdminUsers, useDeleteAdminUser, useMe, usePurgeUser, useRemovedUsers, useSaveAdminUser, useSyncUsers, useUserAccess, useWorkspaces } from '../lib/queries'
 import type { AdminUser, AdminUserInput, MemberRole, RemovedUser } from '../lib/types'
 
 const PAGE = 20
@@ -261,6 +262,17 @@ function UserDialog({ user, self, onClose }: { user?: AdminUser; self: boolean; 
         return setAccessError(`User saved, but workspace access wasn't: ${(err as Error).message}`)
       }
     }
+    // A default workspace the user can't see would be ignored: clear it.
+    const defaultWs = f.is_admin || access.canSee(access.defaultWorkspace) ? access.defaultWorkspace : ''
+    if (defaultWs !== access.savedDefaultWorkspace) {
+      try {
+        await saveDefaultWorkspace(saved.id, defaultWs)
+        qc.invalidateQueries({ queryKey: ['user-access', saved.id] })
+        qc.invalidateQueries({ queryKey: ['me'] })
+      } catch (err) {
+        return setAccessError(`User saved, but the default workspace wasn't: ${(err as Error).message}`)
+      }
+    }
     onClose()
   }
 
@@ -314,6 +326,7 @@ function UserDialog({ user, self, onClose }: { user?: AdminUser; self: boolean; 
         ) : (
           <WorkspaceAccess draft={access} />
         )}
+        <DefaultWorkspace draft={access} admin={!!f.is_admin} />
         <div className="space-y-2 rounded-md border border-slate-200 p-3">
           <label className={clsx('flex items-center gap-2 text-sm', self && 'opacity-50')}>
             <input type="checkbox" checked={f.enabled} disabled={self} onChange={(e) => up({ enabled: e.target.checked })} />
@@ -516,6 +529,9 @@ function useAccessDraft(keycloakId?: string) {
   const { data: workspaces = [] } = useWorkspaces()
   const defaultRole: MemberRole = current?.default_role ?? appConfig().default_workspace_role ?? 'viewer'
   const [edits, setEdits] = useState<Record<string, MemberRole>>({})
+  const savedDefaultWorkspace = current?.default_workspace_id ?? ''
+  const [defaultEdit, setDefaultEdit] = useState<string | null>(null)
+  const defaultWorkspace = defaultEdit ?? savedDefaultWorkspace
   const rows = (current?.workspaces ?? workspaces.map((w) => ({ workspace_id: w.id, key: w.key, name: w.name, role: defaultRole, explicit: false }))).map((r) => ({
     ...r,
     role: edits[r.workspace_id] ?? r.role,
@@ -529,6 +545,11 @@ function useAccessDraft(keycloakId?: string) {
     roles: Object.fromEntries(rows.map((r) => [r.workspace_id, r.role])) as Record<string, MemberRole>,
     set: (id: string, role: MemberRole) => setEdits((e) => ({ ...e, [id]: role })),
     setAll: (role: MemberRole) => setEdits(Object.fromEntries(rows.map((r) => [r.workspace_id, role]))),
+    savedDefaultWorkspace,
+    defaultWorkspace,
+    setDefaultWorkspace: setDefaultEdit,
+    /** "" (all workspaces) or a workspace the drafted roles let the user see. */
+    canSee: (id: string) => !id || rows.some((r) => r.workspace_id === id && r.role !== 'none'),
   }
 }
 
@@ -582,5 +603,29 @@ function WorkspaceAccess({ draft }: { draft: ReturnType<typeof useAccessDraft> }
         Workspaces created later default to <b>{ROLE_OPTIONS.find((o) => o.id === draft.defaultRole)?.label}</b> for this user.
       </p>
     </div>
+  )
+}
+
+/** Where the user's Hourly Workload and Weekly Commitment views open. */
+function DefaultWorkspace({ draft, admin }: { draft: ReturnType<typeof useAccessDraft>; admin: boolean }) {
+  const choices = draft.rows.filter((r) => admin || r.role !== 'none')
+  const lost = !admin && !draft.canSee(draft.defaultWorkspace)
+  return (
+    <Field label="Default workspace">
+      <SearchSelect
+        variant="field"
+        width="w-full"
+        icon={FolderKanban}
+        noun="workspaces"
+        placeholder="All workspaces"
+        value={lost ? '' : draft.defaultWorkspace}
+        onChange={draft.setDefaultWorkspace}
+        options={[{ id: '', label: 'All workspaces', fixed: true }, ...choices.map((r) => ({ id: r.workspace_id, label: `${r.key} · ${r.name}`, keywords: [r.key, r.name] }))]}
+      />
+      <p className="mt-1 text-[11px] text-slate-400">
+        {lost ? 'Their default workspace is no longer one they can see; it will be cleared. ' : ''}
+        Hourly Workload and Weekly Commitment (Team) open on this workspace for them; they can still switch.
+      </p>
+    </Field>
   )
 }

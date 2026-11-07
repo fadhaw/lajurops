@@ -174,9 +174,9 @@ const taskColsLite = `t.id::text, t.workspace_id::text, p.key, t.parent_id::text
 	t.project_category_id::text, pc.name, pc.color,
 	t.runbook_total, t.runbook_done`
 
-// Commitments returns every active user's commitment for the week starting
-// at week (plus inactive users with committed tasks), with tasks limited to
-// scope. userID, when set, returns only that user. lite skips the task
+// Commitments returns the commitment for the week starting at week of every
+// active user who can see a workspace in scope, plus anyone with committed
+// tasks in scope, with tasks limited to scope. userID, when set, returns only that user. lite skips the task
 // fields only the task dialog needs (see taskColsLite and Brief).
 func (s *Store) Commitments(ctx context.Context, week time.Time, scope Scope, userID string, lite bool) ([]Commitment, error) {
 	cols := taskCols
@@ -197,11 +197,14 @@ func (s *Store) Commitments(ctx context.Context, week time.Time, scope Scope, us
 		FROM users u
 		LEFT JOIN commitments c ON c.user_id = u.id AND c.week_start = $1
 		WHERE ($2::uuid IS NULL OR u.id = $2)
-		  AND ((u.active AND u.deleted_at IS NULL) OR c.user_id IS NOT NULL
+		  AND ($2::uuid IS NOT NULL OR (u.active AND u.deleted_at IS NULL AND `+memberOf("u", "$6", "$7")+`)
+		       OR EXISTS (SELECT 1 FROM commitment_tasks ct JOIN tasks d ON d.id = ct.task_id
+		                  WHERE ct.user_id = u.id AND ct.week_start = $1 AND ($6::text[] IS NULL OR d.workspace_id::text = ANY($6)))
 		       OR EXISTS (SELECT 1 FROM task_assignees ta JOIN tasks h ON h.id = ta.task_id
-		                  WHERE ta.user_id = u.id AND ((h.type = 'hourly' AND h.start_at >= $4 AND h.start_at < $5) OR (`+autoDaily("h", "$4", "$5")+`))))
+		                  WHERE ta.user_id = u.id AND ((h.type = 'hourly' AND h.start_at >= $4 AND h.start_at < $5) OR (`+autoDaily("h", "$4", "$5")+`))
+		                    AND ($6::text[] IS NULL OR h.workspace_id::text = ANY($6))))
 		ORDER BY lower(coalesce(nullif(u.display_name, ''), u.username))`,
-		weekDate(week), user, DefaultCapacityHours, week, end)
+		weekDate(week), user, DefaultCapacityHours, week, end, scopeArg(scope), s.defaultRole())
 	if err != nil {
 		return nil, err
 	}

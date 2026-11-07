@@ -363,11 +363,39 @@ func (a *API) adminGetAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, err := a.store.UserAccess(ctx, id, a.cfg.DefaultWorkspaceRole)
-	a.respondAccess(w, list, err)
+	a.respondAccess(w, r, id, list, err)
 }
 
-func (a *API) respondAccess(w http.ResponseWriter, list []store.MemberAccess, err error) {
-	respond(w, map[string]any{"workspaces": list, "default_role": a.cfg.DefaultWorkspaceRole}, err)
+func (a *API) respondAccess(w http.ResponseWriter, r *http.Request, userID string, list []store.MemberAccess, err error) {
+	var def string
+	if err == nil {
+		def, err = a.store.DefaultWorkspace(r.Context(), userID)
+	}
+	respond(w, map[string]any{"workspaces": list, "default_role": a.cfg.DefaultWorkspaceRole, "default_workspace_id": def}, err)
+}
+
+// adminSetDefaultWorkspace sets the workspace the user's Hourly Workload and
+// Weekly Commitment views open on: {"workspace_id": "<id>"}, "" for all.
+func (a *API) adminSetDefaultWorkspace(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var in struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if err := decode(r, &in); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	id, err := a.localUserID(ctx, chi.URLParam(r, "id"))
+	if err != nil {
+		respondAny(w, err)
+		return
+	}
+	if err := a.store.SetDefaultWorkspace(ctx, id, in.WorkspaceID); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	list, err := a.store.UserAccess(ctx, id, a.cfg.DefaultWorkspaceRole)
+	a.respondAccess(w, r, id, list, err)
 }
 
 // adminSetAccess stores the user's role per workspace: {"<workspace id>": "editor"|"viewer"|"none"}.
@@ -388,5 +416,5 @@ func (a *API) adminSetAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, err := a.store.UserAccess(ctx, id, a.cfg.DefaultWorkspaceRole)
-	a.respondAccess(w, list, err)
+	a.respondAccess(w, r, id, list, err)
 }

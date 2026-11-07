@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Workspace roles for non-admin users (see migration 010).
@@ -128,4 +129,38 @@ func notFound(err error) error {
 		return ErrNotFound
 	}
 	return mapConstraintErr(err)
+}
+
+// DefaultWorkspace is the workspace the user's report views open on; "" for
+// none (every workspace they can see).
+func (s *Store) DefaultWorkspace(ctx context.Context, userID string) (string, error) {
+	var ws *string
+	err := s.db.QueryRow(ctx, `SELECT default_workspace_id::text FROM users WHERE id = $1`, userID).Scan(&ws)
+	if err != nil {
+		return "", notFound(err)
+	}
+	if ws == nil {
+		return "", nil
+	}
+	return *ws, nil
+}
+
+// SetDefaultWorkspace sets the user's default workspace ("" clears it).
+func (s *Store) SetDefaultWorkspace(ctx context.Context, userID, workspaceID string) error {
+	var ws any
+	if workspaceID != "" {
+		ws = workspaceID
+	}
+	tag, err := s.db.Exec(ctx, `UPDATE users SET default_workspace_id = $2::uuid WHERE id = $1`, userID, ws)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "22P02") {
+			return invalid("unknown workspace")
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

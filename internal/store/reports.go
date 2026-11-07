@@ -41,7 +41,9 @@ type Workload struct {
 const UnassignedID = "none"
 
 // Scope limits a report to workspaces: nil means every workspace (admins),
-// otherwise only the listed ones (an empty list matches nothing).
+// otherwise only the listed ones (an empty list matches nothing). Reports
+// with a scope list only the people who can see one of its workspaces, plus
+// anyone with tasks in it.
 type Scope []string
 
 func (s *Store) WorkloadReport(ctx context.Context, from, to time.Time, scope Scope) ([]Workload, error) {
@@ -66,9 +68,9 @@ func (s *Store) WorkloadReport(ctx context.Context, from, to time.Time, scope Sc
 		      AND ($3::text[] IS NULL OR t.workspace_id::text = ANY($3))
 		      AND t.type <> 'project'
 		GROUP BY u.id
-		HAVING (u.active AND u.deleted_at IS NULL) OR count(t.id) > 0
+		HAVING (u.active AND u.deleted_at IS NULL AND `+memberOf("u", "$3", "$4")+`) OR count(t.id) > 0
 		ORDER BY 8 DESC, 5 DESC, lower(u.username)`,
-		from, to, scopeArg(scope))
+		from, to, scopeArg(scope), s.defaultRole())
 	if err != nil {
 		return nil, err
 	}

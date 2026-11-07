@@ -55,6 +55,8 @@ export interface Me extends User {
   /** Workspace id -> role for non-admins (no entry = no access); null for admins. */
   workspace_roles: Record<string, WorkspaceRole> | null
   can_create_workspace: boolean
+  /** Where Hourly Workload and Weekly Commitment open; null for all workspaces. */
+  default_workspace_id: string | null
 }
 
 export type WorkspaceRole = 'editor' | 'viewer'
