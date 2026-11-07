@@ -28,7 +28,7 @@
 ## Features
 
 ### Board
-Kanban for daily and hourly work (To Do → In Progress → In Review → Done). Drag cards between columns; filter
+Kanban for daily and hourly work (To Do → In Progress → In Review → Rescheduled → Done → Canceled). Drag cards between columns; filter
 by assignee, type, project or environment. Cards show the project, environment, owners, comments and what a
 task is waiting for.
 
@@ -103,6 +103,8 @@ toolbar, shortcuts and preview.
 Per person, per week or month: time spent on **hourly tasks** (support, deployments, implementation), plus hourly/daily
 task counts and completion. Daily tasks have no hours and are planned on Weekly Commitment. Drill into a person's tasks and
 export CSV. Tasks nobody owns are listed as **Unassigned** (also on the week grid), so open slots are easy to spot.
+It lists the people who can see the selected workspaces (plus anyone with tasks in them), and opens on the user's
+**default workspace** when an admin has set one.
 
 <img src="docs/media/workload.gif" alt="Hourly Workload: per-person drill-down, the Unassigned row, monthly view and week grid" width="900">
 
@@ -125,14 +127,17 @@ as a new workspace, with a preview first.
 
 ### Sign-in and user management
 Sign in with **Keycloak** (OIDC + PKCE). Admins manage users from the app (create, disable, reset passwords,
-grant admin) and choose who can **edit**, **view** or **not see** each workspace. They can also sync with
+grant admin), choose who can **edit**, **view** or **not see** each workspace, and set the **default workspace**
+Hourly Workload and Weekly Commitment open on for each user. They can also sync with
 Keycloak to clean up people deleted there.
 
 <img src="docs/media/sign-in.png" alt="Sign-in screen" width="900">
 
 ### At a glance
 
-- **Board**: Kanban (To Do → In Progress → In Review → Done) with drag & drop
+- **Board**: Kanban (To Do → In Progress → In Review → Rescheduled → Done → Canceled) with drag & drop.
+  Canceled tasks are closed without being done: they don't block other tasks and are left out of progress,
+  workload and commitments
 - **Timeline (Gantt)**: zoom from **month → week → day → 6 hours → hour**; drag to reschedule, drag edges to resize, Ctrl+scroll to zoom
 - **Calendar**: month/week/day/agenda views; click to open, click or drag over empty time to create; busy slots grouped by project
 - **Workspaces** (e.g. a team) hold all tasks; task keys look like `APP-12`
@@ -149,6 +154,8 @@ Keycloak to clean up people deleted there.
   A task can only contain smaller types (project → daily/hourly, daily → hourly).
   Daily and hourly tasks can also be **independent**, without a project.
 - **Multiple owners** per project/daily/hourly task
+- **Duplicate** a task with everything inside it (a project's daily and hourly tasks, a daily task's hourly
+  tasks): owners, dates and estimates are kept, and the copies start as To Do
 - **Environments** per project (e.g. Dev → QA → Staging → Production, ordered and colour-coded);
   daily/hourly tasks in the project say which environment they're done in, shown on cards, the timeline
   and calendar, with an environment filter on the board
@@ -385,7 +392,7 @@ update script: it starts the new version next to the old one, waits until each n
 stops the old ones (which finish their requests first):
 
 ```bash
-LAJUROPS_VERSION=0.6.0 deploy/rolling-update.sh
+LAJUROPS_VERSION=0.7.0 deploy/rolling-update.sh
 ```
 
 This makes the app tier highly available on one Docker host; Postgres and Keycloak still run as single
@@ -476,6 +483,7 @@ POST   /api/tasks               { workspace_id | parent_id, title, type: project
 GET    /api/tasks/{id}          includes subtasks, ancestors, waiting_for and blocking
 PATCH  /api/tasks/{id}          partial update (incl. type, parent_id; nesting is validated); null clears a field
 DELETE /api/tasks/{id}          also deletes everything inside it
+POST   /api/tasks/{id}/duplicate               copy it with everything inside it; returns the top copy
 GET    /api/workspaces/{id}/categories              project categories (with project counts)
 GET    /api/workspaces/{id}/project-progress        done/total daily and hourly tasks inside each project
 PUT    /api/workspaces/{id}/categories              [{ id?, name, color }]  replaces the list, in order
@@ -517,6 +525,7 @@ PATCH  /api/admin/users/{id}    any of the above except username; password reset
 DELETE /api/admin/users/{id}
 GET    /api/admin/users/{id}/access         every workspace with the user's role (and whether it's the default)
 PUT    /api/admin/users/{id}/access         { "<workspace id>": "editor" | "viewer" | "none", ... }
+PUT    /api/admin/users/{id}/default-workspace   { workspace_id }   where their workload/commitment views open ("" for all)
 ```
 
 ## License
