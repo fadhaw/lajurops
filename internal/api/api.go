@@ -99,6 +99,7 @@ func (a *API) routes(r chi.Router) {
 	r.Get("/tasks/{id}", a.getTask)
 	r.Patch("/tasks/{id}", a.updateTask)
 	r.Delete("/tasks/{id}", a.deleteTask)
+	r.Post("/tasks/{id}/duplicate", a.duplicateTask)
 
 	r.Get("/tasks/{id}/environments", a.listEnvironments)
 	r.Put("/tasks/{id}/environments", a.setEnvironments)

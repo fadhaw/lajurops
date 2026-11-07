@@ -193,6 +193,15 @@ export function useCreateTask() {
   })
 }
 
+/** Copies a task with the tasks inside it; resolves to the top copy. */
+export function useDuplicateTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<Task>(`/tasks/${id}/duplicate`, { method: 'POST' }),
+    onSettled: () => invalidateTaskData(qc),
+  })
+}
+
 export function useDeleteTask() {
   const qc = useQueryClient()
   return useMutation({
